@@ -166,6 +166,42 @@ function listChores(db, { includeArchived = false } = {}) {
   return rows.map((row) => hydrateChore(db, row));
 }
 
+function listCalendarChores(db, filters) {
+  const clauses = ['c.archived = 0'];
+  const params = [];
+
+  if (filters.overdueOnly) {
+    clauses.push('c.next_due < ?');
+    params.push(filters.today);
+  } else {
+    clauses.push('((c.next_due >= ? AND c.next_due <= ?) OR c.next_due < ?)');
+    params.push(filters.start, filters.end, filters.today);
+  }
+
+  if (filters.roommateId) {
+    if (filters.includeAll) {
+      clauses.push('(c.assigned_to = ? OR c.assigned_to IS NULL)');
+    } else {
+      clauses.push('c.assigned_to = ?');
+    }
+    params.push(filters.roommateId);
+  } else if (!filters.includeAll) {
+    clauses.push('c.assigned_to IS NOT NULL');
+  }
+
+  const rows = db.prepare(`
+    SELECT
+      c.*,
+      r.name AS assigned_name
+    FROM chores c
+    LEFT JOIN roommates r ON r.id = c.assigned_to
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY c.next_due ASC, c.name ASC
+  `).all(...params);
+
+  return rows.map((row) => hydrateChore(db, row));
+}
+
 function getChore(db, id) {
   const row = db.prepare(`
     SELECT c.*, r.name AS assigned_name
@@ -383,6 +419,36 @@ function listHistory(db, filters = {}) {
   `).all(...params).map(mapHistory);
 }
 
+function listCalendarHistory(db, filters) {
+  const clauses = [
+    'c.archived = 0',
+    'h.completed_date >= ?',
+    'h.completed_date <= ?'
+  ];
+  const params = [filters.start, filters.end];
+
+  if (filters.roommateId) {
+    clauses.push('h.completed_by = ?');
+    params.push(filters.roommateId);
+  }
+
+  return db.prepare(`
+    SELECT
+      h.*,
+      c.name AS chore_name,
+      completed.name AS completed_by_name,
+      prev.name AS previous_assignee_name,
+      next.name AS new_assignee_name
+    FROM completion_history h
+    JOIN chores c ON c.id = h.chore_id
+    JOIN roommates completed ON completed.id = h.completed_by
+    LEFT JOIN roommates prev ON prev.id = h.previous_assignee
+    LEFT JOIN roommates next ON next.id = h.new_assignee
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY h.completed_date ASC, h.id ASC
+  `).all(...params).map(mapHistory);
+}
+
 function getHistoryRecord(db, id) {
   const row = db.prepare(`
     SELECT
@@ -518,6 +584,8 @@ module.exports = {
   getLastUpdated,
   getRoommate,
   getRoommates,
+  listCalendarChores,
+  listCalendarHistory,
   listChores,
   listHistory,
   openDatabase,

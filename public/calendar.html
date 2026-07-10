@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ansli Chores Calendar</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/calendar.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#calendar-main">Skip to calendar</a>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Date-based chore view</p>
+        <h1>Calendar</h1>
+      </div>
+      <div class="header-actions">
+        <a class="secondary-button" href="/">Back to Dashboard</a>
+        <button class="icon-button theme-text-button" id="theme-toggle" type="button" aria-label="Toggle theme">Aa</button>
+      </div>
+    </header>
+
+    <main id="calendar-main" class="app-shell calendar-shell">
+      <nav class="tabs" aria-label="Main sections">
+        <a class="tab" href="/">Dashboard</a>
+        <a class="tab active" href="/calendar">Calendar</a>
+      </nav>
+
+      <section class="calendar-control-panel" aria-labelledby="calendar-title">
+        <div class="calendar-title-row">
+          <div>
+            <h2 id="calendar-title">Loading</h2>
+            <p id="calendar-updated" class="muted">Last updated: loading</p>
+          </div>
+          <div class="period-controls" aria-label="Calendar period controls">
+            <button id="previous-period" class="secondary-button" type="button">Previous</button>
+            <button id="today-button" class="secondary-button" type="button">Today</button>
+            <button id="next-period" class="secondary-button" type="button">Next</button>
+          </div>
+        </div>
+
+        <div class="calendar-toolbar">
+          <div class="segmented-control" aria-label="Calendar view">
+            <button class="chip active" type="button" data-calendar-view="month">Month</button>
+            <button class="chip" type="button" data-calendar-view="week">Week</button>
+          </div>
+          <label>
+            <span>Roommate</span>
+            <select id="roommate-filter">
+              <option value="">All roommates</option>
+            </select>
+          </label>
+          <label>
+            <span>Chores</span>
+            <select id="status-filter">
+              <option value="all">All chores</option>
+              <option value="overdue">Overdue only</option>
+            </select>
+          </label>
+          <label class="toggle-filter">
+            <input id="include-all-filter" type="checkbox" checked>
+            <span>Include All</span>
+          </label>
+          <label class="toggle-filter">
+            <input id="active-only-filter" type="checkbox" checked disabled>
+            <span>Active only</span>
+          </label>
+          <label class="toggle-filter">
+            <input id="show-completed-filter" type="checkbox">
+            <span>Show completed chores</span>
+          </label>
+        </div>
+      </section>
+
+      <section id="calendar-error" class="empty-state calendar-message" hidden></section>
+      <section id="overdue-summary" class="overdue-summary" aria-live="polite" hidden></section>
+
+      <section class="calendar-surface" aria-label="Calendar">
+        <div class="weekday-row" aria-hidden="true">
+          <span>Sun</span>
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+        </div>
+        <div id="calendar-grid" class="calendar-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="agenda-section" aria-labelledby="agenda-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2 id="agenda-title">Agenda</h2>
+            <p class="muted">Chores grouped by due or completed date.</p>
+          </div>
+        </div>
+        <div id="agenda-list" class="agenda-list"></div>
+      </section>
+    </main>
+
+    <dialog id="detail-dialog" class="modal">
+      <form method="dialog">
+        <header class="modal-header">
+          <h3 id="detail-title">Chore details</h3>
+          <button class="icon-button" type="button" data-close-dialog="detail-dialog" aria-label="Close">x</button>
+        </header>
+        <div id="detail-content" class="details-grid"></div>
+        <p id="detail-notes" class="notes"></p>
+        <p id="detail-rotation" class="rotation-note"></p>
+        <footer class="modal-actions">
+          <button class="primary-button" id="detail-complete" type="button">Mark Complete</button>
+          <button class="secondary-button" id="detail-edit" type="button">Edit Chore</button>
+          <button class="secondary-button" type="button" data-close-dialog="detail-dialog">Close</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="complete-dialog" class="modal">
+      <form method="dialog" id="complete-form">
+        <header class="modal-header">
+          <h3>Mark complete</h3>
+          <button class="icon-button" type="button" data-close-dialog="complete-dialog" aria-label="Close">x</button>
+        </header>
+        <p id="complete-chore-name" class="modal-subtitle"></p>
+        <label>
+          <span>Completion date</span>
+          <input id="complete-date" type="date" required>
+        </label>
+        <label>
+          <span>Completed by</span>
+          <select id="complete-by" required></select>
+        </label>
+        <label>
+          <span>Note</span>
+          <textarea id="complete-note" rows="3" maxlength="1000"></textarea>
+        </label>
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="complete-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Save completion</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="chore-dialog" class="modal wide-modal">
+      <form method="dialog" id="chore-form">
+        <header class="modal-header">
+          <h3 id="chore-dialog-title">Edit chore</h3>
+          <button class="icon-button" type="button" data-close-dialog="chore-dialog" aria-label="Close">x</button>
+        </header>
+        <div class="form-grid">
+          <label class="span-2">
+            <span>Name</span>
+            <input id="chore-name" type="text" maxlength="120" required>
+          </label>
+          <label>
+            <span>Assigned</span>
+            <select id="chore-assigned"></select>
+          </label>
+          <label>
+            <span>Frequency</span>
+            <select id="chore-frequency">
+              <option value="1:week">Every week</option>
+              <option value="2:week">Every 2 weeks</option>
+              <option value="1:month">Every month</option>
+            </select>
+          </label>
+          <label>
+            <span>Last completed</span>
+            <input id="chore-last-done" type="date">
+          </label>
+          <label>
+            <span>Next due</span>
+            <input id="chore-next-due" type="date" required>
+          </label>
+          <label class="span-2">
+            <span>Notes</span>
+            <textarea id="chore-notes" rows="3" maxlength="1000"></textarea>
+          </label>
+        </div>
+
+        <section class="rotation-editor" aria-labelledby="rotation-heading">
+          <label class="toggle-row">
+            <input id="rotation-enabled" type="checkbox">
+            <span id="rotation-heading">Enable rotation</span>
+          </label>
+          <div id="rotation-list" class="rotation-list"></div>
+        </section>
+
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="chore-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Save chore</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script src="/calendar.js"></script>
+  </body>
+</html>

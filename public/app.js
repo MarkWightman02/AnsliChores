@@ -35,7 +35,7 @@ function bindEvents() {
     state.sort = event.target.value;
     loadDashboard();
   });
-  document.querySelectorAll('.tab').forEach((button) => {
+  document.querySelectorAll('.tab[data-view]').forEach((button) => {
     button.addEventListener('click', () => switchView(button.dataset.view));
   });
   document.querySelectorAll('.chip').forEach((button) => {

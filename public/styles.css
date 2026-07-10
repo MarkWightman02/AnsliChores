@@ -183,7 +183,7 @@ textarea {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
   gap: 0.35rem;
   position: sticky;
   top: 0;
@@ -361,6 +361,14 @@ textarea {
 
 .badge.upcoming {
   color: var(--success);
+}
+
+.badge.completed {
+  color: var(--success);
+}
+
+.badge.archived {
+  color: var(--muted);
 }
 
 .details-grid {

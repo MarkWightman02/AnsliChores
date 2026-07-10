@@ -14,6 +14,8 @@ const {
   getLastUpdated,
   getRoommate,
   getRoommates,
+  listCalendarChores,
+  listCalendarHistory,
   listChores,
   listHistory,
   openDatabase,
@@ -62,6 +64,41 @@ function createApp(db = openDatabase()) {
       today,
       summary: summarizeChores(chores, today),
       chores: filtered,
+      lastUpdated: getLastUpdated(db)
+    });
+  });
+
+  app.get('/api/calendar', (req, res) => {
+    const parsed = validateCalendarQuery(db, req.query);
+    if (!parsed.ok) return sendError(res, 400, parsed.message);
+
+    const filters = parsed.filters;
+    const chores = listCalendarChores(db, filters)
+      .map((chore) => decorateChore(chore, filters.today))
+      .map((chore) => ({
+        ...chore,
+        type: 'due',
+        calendarDate: chore.nextDue
+      }));
+
+    const completed = filters.showCompleted
+      ? listCalendarHistory(db, filters).map((record) => ({
+          ...record,
+          type: 'completed',
+          status: 'Completed',
+          calendarDate: record.completedDate
+        }))
+      : [];
+
+    res.json({
+      start: filters.start,
+      end: filters.end,
+      today: filters.today,
+      view: filters.view,
+      roommates: getRoommates(db),
+      chores,
+      completed,
+      overdue: chores.filter((chore) => chore.nextDue < filters.today),
       lastUpdated: getLastUpdated(db)
     });
   });
@@ -297,6 +334,70 @@ function validateHistoryFilters(query) {
       to: query.to || null
     }
   };
+}
+
+function validateCalendarQuery(db, query) {
+  const start = stringQueryValue(query.start);
+  const end = stringQueryValue(query.end);
+  if (!isValidDate(start)) return invalid('Start date is required and must use YYYY-MM-DD.');
+  if (!isValidDate(end)) return invalid('End date is required and must use YYYY-MM-DD.');
+  if (start > end) return invalid('Start date must be before or equal to end date.');
+  if (daysBetween(start, end) > 370) return invalid('Calendar date range cannot exceed 370 days.');
+
+  const todayValue = stringQueryValue(query.today);
+  if (todayValue && !isValidDate(todayValue)) return invalid('Today must use YYYY-MM-DD.');
+
+  const view = stringQueryValue(query.view) || 'month';
+  if (!['month', 'week'].includes(view)) return invalid('Calendar view must be month or week.');
+
+  const status = stringQueryValue(query.status) || 'all';
+  if (!['all', 'overdue'].includes(status)) return invalid('Calendar status filter must be all or overdue.');
+
+  const roommateRaw = stringQueryValue(query.roommateId);
+  const roommateId = parseOptionalId(roommateRaw);
+  if (roommateRaw && !roommateId) return invalid('Invalid roommate filter.');
+  if (roommateId && !getRoommate(db, roommateId)) return invalid('Roommate filter was not found.');
+
+  const includeAll = parseBooleanQuery(query.includeAll, true);
+  if (includeAll === null) return invalid('includeAll must be true or false.');
+  const showCompleted = parseBooleanQuery(query.showCompleted, false);
+  if (showCompleted === null) return invalid('showCompleted must be true or false.');
+
+  return {
+    ok: true,
+    filters: {
+      start,
+      end,
+      today: todayValue || todayLocal(),
+      view,
+      status,
+      roommateId,
+      includeAll,
+      showCompleted,
+      overdueOnly: status === 'overdue'
+    }
+  };
+}
+
+function stringQueryValue(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+function parseBooleanQuery(value, defaultValue) {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return null;
+}
+
+function daysBetween(start, end) {
+  return Math.round((dateOnlyUtcMs(end) - dateOnlyUtcMs(start)) / 86400000);
+}
+
+function dateOnlyUtcMs(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
 }
 
 function cleanText(value, maxLength) {

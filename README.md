@@ -6,6 +6,7 @@ A self-hosted roommate chore tracker for Sam, Corey, Anthony, and Mark. It uses 
 
 - Shared server-side SQLite storage
 - Mobile-first dashboard with status summaries, filters, and sorting
+- Separate `/calendar` page with month and week views, filters, overdue summary, and mobile agenda
 - Chore completion workflow with notes, actual completion dates, and rotation advancement
 - Add, edit, archive, restore, and permanently delete archived chores
 - Custom chore rotations with ordering
@@ -54,13 +55,14 @@ The app enables SQLite foreign keys, WAL mode, and transactional writes for comp
 npm test
 ```
 
-The tests cover due-date calculations, monthly end-of-month behavior, first-run seeding, rotation advancement, and deleting the most recent completion record.
+The tests cover due-date calculations, monthly end-of-month behavior, first-run seeding, rotation advancement, deleting the most recent completion record, and calendar route/API behavior.
 
 ## API Overview
 
 - `GET /api/health`
 - `GET /api/roommates`
 - `GET /api/dashboard`
+- `GET /api/calendar`
 - `GET /api/chores`
 - `POST /api/chores`
 - `PUT /api/chores/:id`
