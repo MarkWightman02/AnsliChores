@@ -378,7 +378,7 @@ function statusRank(status) {
 }
 
 if (require.main === module) {
-  const port = Number(process.env.PORT) || 8080;
+  const port = Number(process.env.PORT) || 80;
   const app = createApp();
   app.listen(port, () => {
     console.log(`Ansli Chores is running at http://localhost:${port}`);
