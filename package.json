@@ -1,0 +1,23 @@
+{
+  "name": "ansli-chores",
+  "version": "1.0.0",
+  "description": "Self-hosted roommate chore tracking web application",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "chores",
+    "roommates",
+    "sqlite",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {}
+}

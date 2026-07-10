@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ansli Chores</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to chores</a>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Roommate chore tracker</p>
+        <h1>Ansli Chores</h1>
+      </div>
+      <div class="header-actions">
+        <label class="person-picker">
+          <span>I am</span>
+          <select id="current-roommate"></select>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      </div>
+    </header>
+
+    <main id="main" class="app-shell">
+      <nav class="tabs" aria-label="Main sections">
+        <button class="tab active" type="button" data-view="dashboard">Dashboard</button>
+        <button class="tab" type="button" data-view="manage">Manage</button>
+        <button class="tab" type="button" data-view="history">History</button>
+      </nav>
+
+      <section id="dashboard-view" class="view active" aria-labelledby="dashboard-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="dashboard-heading">Today</h2>
+            <p id="last-updated" class="muted">Last updated: loading</p>
+          </div>
+          <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+        </div>
+
+        <div id="summary-grid" class="summary-grid" aria-live="polite"></div>
+
+        <div class="toolbar" aria-label="Chore filters and sorting">
+          <div class="chip-group" id="filter-group">
+            <button class="chip active" type="button" data-filter="all">All chores</button>
+            <button class="chip" type="button" data-filter="my">My chores</button>
+            <button class="chip" type="button" data-filter="overdue">Overdue</button>
+            <button class="chip" type="button" data-filter="today">Due today</button>
+            <button class="chip" type="button" data-filter="upcoming">Upcoming</button>
+            <button class="chip" type="button" data-filter="recent">Completed recently</button>
+          </div>
+          <label class="sort-picker">
+            <span>Sort</span>
+            <select id="sort-select">
+              <option value="next_due">Next due date</option>
+              <option value="assignee">Assignee</option>
+              <option value="name">Chore name</option>
+              <option value="status">Status</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="chores-list" class="chores-list" aria-live="polite"></div>
+      </section>
+
+      <section id="manage-view" class="view" aria-labelledby="manage-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="manage-heading">Manage chores</h2>
+            <p class="muted">Archived chores stay out of the dashboard.</p>
+          </div>
+          <div class="button-row">
+            <a class="secondary-button" href="/api/export">Export JSON</a>
+            <a class="secondary-button" href="/api/backup">Backup DB</a>
+            <button id="add-chore-button" class="primary-button" type="button">Add chore</button>
+          </div>
+        </div>
+        <div id="manage-list" class="manage-list"></div>
+      </section>
+
+      <section id="history-view" class="view" aria-labelledby="history-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="history-heading">Completion history</h2>
+            <p class="muted">Corrections are available when someone taps too fast.</p>
+          </div>
+        </div>
+
+        <form id="history-filters" class="history-filters">
+          <label>
+            <span>Roommate</span>
+            <select id="history-roommate">
+              <option value="">Everyone</option>
+            </select>
+          </label>
+          <label>
+            <span>Chore</span>
+            <select id="history-chore">
+              <option value="">All chores</option>
+            </select>
+          </label>
+          <label>
+            <span>From</span>
+            <input id="history-from" type="date">
+          </label>
+          <label>
+            <span>To</span>
+            <input id="history-to" type="date">
+          </label>
+          <button class="secondary-button" type="submit">Apply</button>
+        </form>
+        <div id="history-list" class="history-list"></div>
+      </section>
+    </main>
+
+    <dialog id="complete-dialog" class="modal">
+      <form method="dialog" id="complete-form">
+        <header class="modal-header">
+          <h3>Mark complete</h3>
+          <button class="icon-button" type="button" data-close-dialog="complete-dialog" aria-label="Close">×</button>
+        </header>
+        <p id="complete-chore-name" class="modal-subtitle"></p>
+        <label>
+          <span>Completion date</span>
+          <input id="complete-date" type="date" required>
+        </label>
+        <label>
+          <span>Completed by</span>
+          <select id="complete-by" required></select>
+        </label>
+        <label>
+          <span>Note</span>
+          <textarea id="complete-note" rows="3" maxlength="1000"></textarea>
+        </label>
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="complete-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Save completion</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="chore-dialog" class="modal wide-modal">
+      <form method="dialog" id="chore-form">
+        <header class="modal-header">
+          <h3 id="chore-dialog-title">Add chore</h3>
+          <button class="icon-button" type="button" data-close-dialog="chore-dialog" aria-label="Close">×</button>
+        </header>
+        <div class="form-grid">
+          <label class="span-2">
+            <span>Name</span>
+            <input id="chore-name" type="text" maxlength="120" required>
+          </label>
+          <label>
+            <span>Assigned</span>
+            <select id="chore-assigned"></select>
+          </label>
+          <label>
+            <span>Frequency</span>
+            <select id="chore-frequency">
+              <option value="1:week">Every week</option>
+              <option value="2:week">Every 2 weeks</option>
+              <option value="1:month">Every month</option>
+            </select>
+          </label>
+          <label>
+            <span>Last completed</span>
+            <input id="chore-last-done" type="date">
+          </label>
+          <label>
+            <span>Next due</span>
+            <input id="chore-next-due" type="date" required>
+          </label>
+          <label class="span-2">
+            <span>Notes</span>
+            <textarea id="chore-notes" rows="3" maxlength="1000"></textarea>
+          </label>
+        </div>
+
+        <section class="rotation-editor" aria-labelledby="rotation-heading">
+          <label class="toggle-row">
+            <input id="rotation-enabled" type="checkbox">
+            <span id="rotation-heading">Enable rotation</span>
+          </label>
+          <div id="rotation-list" class="rotation-list"></div>
+        </section>
+
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="chore-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Save chore</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="history-dialog" class="modal">
+      <form method="dialog" id="history-form">
+        <header class="modal-header">
+          <h3>Correct completion</h3>
+          <button class="icon-button" type="button" data-close-dialog="history-dialog" aria-label="Close">×</button>
+        </header>
+        <p id="history-record-title" class="modal-subtitle"></p>
+        <label>
+          <span>Completion date</span>
+          <input id="history-completed-date" type="date" required>
+        </label>
+        <label>
+          <span>Completed by</span>
+          <select id="history-completed-by" required></select>
+        </label>
+        <label>
+          <span>Note</span>
+          <textarea id="history-note" rows="3" maxlength="1000"></textarea>
+        </label>
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="history-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Save correction</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
