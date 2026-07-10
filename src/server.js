@@ -23,9 +23,18 @@ const {
   updateChore
 } = require('./db');
 const { addDays, isValidDate, normalizeNullableDate, todayLocal } = require('./dateUtils');
+const {
+  getNotificationStatus,
+  loadNotificationConfig,
+  sendManualTestNotification,
+  startNotificationScheduler
+} = require('./notifications');
 
-function createApp(db = openDatabase()) {
+function createApp(db = openDatabase(), options = {}) {
   const app = express();
+  const notificationConfig = options.notificationConfig || loadNotificationConfig(process.env, console);
+  const notificationSender = options.notificationSender;
+  let notificationScheduler = null;
 
   app.disable('x-powered-by');
   app.use(securityHeaders);
@@ -45,6 +54,37 @@ function createApp(db = openDatabase()) {
 
   app.get('/api/roommates', (req, res) => {
     res.json({ roommates: getRoommates(db) });
+  });
+
+  app.get('/api/notifications/status', (req, res) => {
+    res.json(getNotificationStatus(db, notificationConfig));
+  });
+
+  app.post('/api/notifications/test', async (req, res) => {
+    if (!notificationConfig.enabled) {
+      return sendError(res, 409, 'Discord notifications are disabled.');
+    }
+
+    const recipient = typeof req.body?.recipient === 'string'
+      ? req.body.recipient.trim().toLowerCase()
+      : '';
+    if (!['mark', 'sam', 'corey', 'anthony', 'all'].includes(recipient)) {
+      return sendError(res, 400, 'Invalid notification test recipient.');
+    }
+
+    try {
+      const result = await sendManualTestNotification(notificationConfig, recipient, {
+        sender: notificationSender,
+        logger: console
+      });
+      res.json({ ok: true, messageId: result.messageId });
+    } catch (error) {
+      if (error.code === 'COOLDOWN') return sendError(res, 429, error.message);
+      if (error.code === 'NOT_CONFIGURED') return sendError(res, 503, error.message);
+      if (error.code === 'BAD_RECIPIENT') return sendError(res, 400, error.message);
+      console.warn(`Discord manual test failed: ${error.message}`);
+      sendError(res, 502, 'Discord test notification failed.');
+    }
   });
 
   app.get('/api/dashboard', (req, res) => {
@@ -221,6 +261,15 @@ function createApp(db = openDatabase()) {
     console.error(error);
     sendError(res, 500, 'Something went wrong.');
   });
+
+  if (options.startNotifications) {
+    notificationScheduler = startNotificationScheduler(db, notificationConfig, {
+      sender: notificationSender,
+      logger: console
+    });
+  }
+
+  app.locals.notificationScheduler = notificationScheduler;
 
   return app;
 }
@@ -480,10 +529,21 @@ function statusRank(status) {
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 80;
-  const app = createApp();
-  app.listen(port, () => {
+  const db = openDatabase();
+  const app = createApp(db, { startNotifications: true });
+  const server = app.listen(port, () => {
     console.log(`Ansli Chores is running at http://localhost:${port}`);
   });
+
+  const shutdown = () => {
+    app.locals.notificationScheduler?.stop();
+    server.close(() => {
+      db.close();
+      process.exit(0);
+    });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 module.exports = { createApp };

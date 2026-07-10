@@ -79,6 +79,16 @@
             <button id="add-chore-button" class="primary-button" type="button">Add chore</button>
           </div>
         </div>
+        <section class="settings-card" aria-labelledby="discord-settings-heading">
+          <div class="card-top">
+            <h3 id="discord-settings-heading">Discord reminders</h3>
+            <span id="discord-configured" class="badge">Loading</span>
+          </div>
+          <div id="discord-settings-grid" class="details-grid"></div>
+          <div class="card-actions">
+            <button id="send-discord-test-button" class="secondary-button" type="button">Send Test Notification</button>
+          </div>
+        </section>
         <div id="manage-list" class="manage-list"></div>
       </section>
 
@@ -165,6 +175,30 @@
         <footer class="modal-actions">
           <button class="secondary-button" id="reset-filters-button" type="button">Reset Filters</button>
           <button class="primary-button" type="submit">Apply</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="discord-test-dialog" class="modal sheet-modal">
+      <form method="dialog" id="discord-test-form">
+        <header class="modal-header">
+          <h3>Send test notification</h3>
+          <button class="icon-button" type="button" data-close-dialog="discord-test-dialog" aria-label="Close">x</button>
+        </header>
+        <p class="modal-subtitle">The server will resolve Discord mentions from its private configuration.</p>
+        <label>
+          <span>Recipient</span>
+          <select id="discord-test-recipient">
+            <option value="mark">Mark</option>
+            <option value="sam">Sam</option>
+            <option value="corey">Corey</option>
+            <option value="anthony">Anthony</option>
+            <option value="all">All Roommates</option>
+          </select>
+        </label>
+        <footer class="modal-actions">
+          <button class="secondary-button" type="button" data-close-dialog="discord-test-dialog">Cancel</button>
+          <button class="primary-button" type="submit">Send Test</button>
         </footer>
       </form>
     </dialog>

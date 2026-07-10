@@ -5,6 +5,7 @@ const state = {
   chores: [],
   dashboardChores: [],
   history: [],
+  notificationStatus: null,
   selectedRoommateId: localStorage.getItem('ansli:selectedRoommate') || '',
   filter: 'all',
   sort: 'next_due',
@@ -44,6 +45,8 @@ function bindEvents() {
     button.addEventListener('click', () => setFilter(button.dataset.filter));
   });
   $('#filter-sheet-button').addEventListener('click', () => openDialog('filter-dialog'));
+  $('#send-discord-test-button').addEventListener('click', () => openDialog('discord-test-dialog'));
+  $('#discord-test-form').addEventListener('submit', submitDiscordTest);
   $('#filter-form').addEventListener('submit', (event) => {
     event.preventDefault();
     state.filter = $('#mobile-filter-select').value;
@@ -91,7 +94,7 @@ async function loadInitialData() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadDashboard(), loadChores(), loadHistory()]);
+  await Promise.all([loadDashboard(), loadChores(), loadHistory(), loadNotificationStatus()]);
 }
 
 async function loadDashboard() {
@@ -129,6 +132,19 @@ async function loadHistory() {
   const data = await api(`/api/history?${params}`);
   state.history = data.history;
   renderHistory();
+}
+
+async function loadNotificationStatus() {
+  try {
+    state.notificationStatus = await api('/api/notifications/status');
+    renderNotificationStatus();
+  } catch (error) {
+    state.notificationStatus = null;
+    $('#discord-configured').textContent = 'Unavailable';
+    renderNotificationSettings([
+      ['Status', 'Unable to load notification status.']
+    ]);
+  }
 }
 
 function renderRoommateOptions() {
@@ -307,6 +323,58 @@ function renderManageList() {
     card.append(actions);
     return card;
   }));
+}
+
+function renderNotificationStatus() {
+  const status = state.notificationStatus;
+  if (!status) return;
+  $('#discord-configured').textContent = status.configured ? 'Configured' : 'Not Configured';
+  $('#discord-configured').className = `badge ${status.configured ? 'completed' : 'overdue'}`;
+  renderNotificationSettings([
+    ['Notifications', status.enabled ? 'Enabled' : 'Disabled'],
+    ['Timezone', status.timezone],
+    ['Morning', status.morningTime],
+    ['Evening', status.eveningEnabled ? `Enabled at ${status.eveningTime}` : `Disabled (${status.eveningTime})`],
+    ['Last morning', formatDelivery(status.lastMorning)],
+    ['Last evening', formatDelivery(status.lastEvening)]
+  ]);
+  $('#send-discord-test-button').disabled = !status.configured || !status.enabled;
+}
+
+function renderNotificationSettings(rows) {
+  const grid = $('#discord-settings-grid');
+  grid.replaceChildren(...rows.map(([label, value]) => {
+    const item = document.createElement('div');
+    item.className = 'detail';
+    item.append(el('span', label), el('strong', value || 'Not set'));
+    return item;
+  }));
+}
+
+function formatDelivery(record) {
+  if (!record) return 'No deliveries yet';
+  return `${record.date}: ${record.status} (${record.choreCount} chores)`;
+}
+
+async function submitDiscordTest(event) {
+  event.preventDefault();
+  const button = event.submitter;
+  setButtonBusy(button, true);
+  try {
+    await api('/api/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient: $('#discord-test-recipient').value
+      })
+    });
+    closeDialog('discord-test-dialog');
+    toast('Discord test notification sent.');
+    await loadNotificationStatus();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    setButtonBusy(button, false);
+  }
 }
 
 function renderHistory() {

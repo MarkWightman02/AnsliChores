@@ -70,10 +70,25 @@ function migrate(db) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notification_type TEXT NOT NULL CHECK (notification_type IN ('morning', 'evening', 'manual_test')),
+      local_date TEXT NOT NULL,
+      scheduled_time TEXT,
+      status TEXT NOT NULL,
+      chore_count INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      discord_message_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (notification_type, local_date)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_chores_next_due ON chores(next_due);
     CREATE INDEX IF NOT EXISTS idx_chores_archived ON chores(archived);
     CREATE INDEX IF NOT EXISTS idx_history_chore ON completion_history(chore_id);
     CREATE INDEX IF NOT EXISTS idx_history_completed_date ON completion_history(completed_date);
+    CREATE INDEX IF NOT EXISTS idx_notification_type_date ON notification_deliveries(notification_type, local_date);
 
     CREATE TRIGGER IF NOT EXISTS trg_roommates_updated_at
     AFTER UPDATE ON roommates
@@ -85,6 +100,12 @@ function migrate(db) {
     AFTER UPDATE ON chores
     BEGIN
       UPDATE chores SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_notification_deliveries_updated_at
+    AFTER UPDATE ON notification_deliveries
+    BEGIN
+      UPDATE notification_deliveries SET updated_at = datetime('now') WHERE id = NEW.id;
     END;
   `);
 }
@@ -198,6 +219,21 @@ function listCalendarChores(db, filters) {
     WHERE ${clauses.join(' AND ')}
     ORDER BY c.next_due ASC, c.name ASC
   `).all(...params);
+
+  return rows.map((row) => hydrateChore(db, row));
+}
+
+function listDueNotificationChores(db, localDate) {
+  const rows = db.prepare(`
+    SELECT
+      c.*,
+      r.name AS assigned_name
+    FROM chores c
+    LEFT JOIN roommates r ON r.id = c.assigned_to
+    WHERE c.archived = 0
+      AND c.next_due <= ?
+    ORDER BY c.next_due ASC, assigned_name ASC, c.name ASC
+  `).all(localDate);
 
   return rows.map((row) => hydrateChore(db, row));
 }
@@ -566,6 +602,107 @@ function isLatestHistoryForChore(db, choreId, historyId) {
   return latest && latest.id === historyId;
 }
 
+function reserveNotificationDelivery(db, type, localDate, scheduledTime) {
+  const tx = db.transaction(() => {
+    const existing = db.prepare(`
+      SELECT *
+      FROM notification_deliveries
+      WHERE notification_type = ? AND local_date = ?
+    `).get(type, localDate);
+
+    if (existing && ['sent', 'skipped_empty'].includes(existing.status)) {
+      return { reserved: false, record: existing };
+    }
+
+    if (existing && existing.status === 'processing') {
+      const stale = db.prepare(`
+        SELECT updated_at <= datetime('now', '-15 minutes') AS stale
+        FROM notification_deliveries
+        WHERE id = ?
+      `).get(existing.id).stale;
+      if (!stale) return { reserved: false, record: existing };
+    }
+
+    if (existing) {
+      db.prepare(`
+        UPDATE notification_deliveries
+        SET scheduled_time = ?,
+            status = 'processing',
+            chore_count = 0,
+            error_message = NULL,
+            discord_message_id = NULL
+        WHERE id = ?
+      `).run(scheduledTime, existing.id);
+      return { reserved: true, record: getNotificationDelivery(db, existing.id) };
+    }
+
+    const result = db.prepare(`
+      INSERT INTO notification_deliveries (
+        notification_type, local_date, scheduled_time, status
+      )
+      VALUES (?, ?, ?, 'processing')
+    `).run(type, localDate, scheduledTime);
+    return { reserved: true, record: getNotificationDelivery(db, result.lastInsertRowid) };
+  });
+  return tx();
+}
+
+function updateNotificationDelivery(db, id, data) {
+  db.prepare(`
+    UPDATE notification_deliveries
+    SET status = ?,
+        chore_count = ?,
+        error_message = ?,
+        discord_message_id = ?
+    WHERE id = ?
+  `).run(
+    data.status,
+    data.choreCount || 0,
+    data.errorMessage || null,
+    data.discordMessageId || null,
+    id
+  );
+  return getNotificationDelivery(db, id);
+}
+
+function getNotificationDelivery(db, id) {
+  return db.prepare(`
+    SELECT
+      id,
+      notification_type AS notificationType,
+      local_date AS localDate,
+      scheduled_time AS scheduledTime,
+      status,
+      chore_count AS choreCount,
+      error_message AS errorMessage,
+      discord_message_id AS discordMessageId,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM notification_deliveries
+    WHERE id = ?
+  `).get(id);
+}
+
+function getLatestNotificationDelivery(db, type) {
+  return db.prepare(`
+    SELECT
+      id,
+      notification_type AS notificationType,
+      local_date AS localDate,
+      scheduled_time AS scheduledTime,
+      status,
+      chore_count AS choreCount,
+      error_message AS errorMessage,
+      discord_message_id AS discordMessageId,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM notification_deliveries
+    WHERE notification_type = ?
+    ORDER BY local_date DESC, id DESC
+    LIMIT 1
+  `).get(type) || null;
+}
+
 function getLastUpdated(db) {
   const choreTime = db.prepare("SELECT MAX(updated_at) AS value FROM chores").get().value;
   const historyTime = db.prepare("SELECT MAX(created_at) AS value FROM completion_history").get().value;
@@ -584,11 +721,16 @@ module.exports = {
   getLastUpdated,
   getRoommate,
   getRoommates,
+  getLatestNotificationDelivery,
+  getNotificationDelivery,
   listCalendarChores,
   listCalendarHistory,
   listChores,
+  listDueNotificationChores,
   listHistory,
   openDatabase,
+  reserveNotificationDelivery,
   setArchived,
+  updateNotificationDelivery,
   updateChore
 };
