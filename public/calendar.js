@@ -12,6 +12,8 @@ const state = {
   rotationDraft: [],
   view: localStorage.getItem('ansli:calendarView') || 'month',
   anchorDate: todayString(),
+  selectedDate: todayString(),
+  currentRange: null,
   roommateId: localStorage.getItem('ansli:calendarRoommate') || '',
   status: localStorage.getItem('ansli:calendarStatus') || 'all',
   includeAll: localStorage.getItem('ansli:calendarIncludeAll') !== 'false',
@@ -19,6 +21,7 @@ const state = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+let lastFocusedElement = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   applySavedTheme();
@@ -33,6 +36,7 @@ function bindEvents() {
   $('#next-period').addEventListener('click', () => movePeriod(1));
   $('#today-button').addEventListener('click', () => {
     state.anchorDate = todayString();
+    state.selectedDate = state.anchorDate;
     loadCalendar(true);
   });
   document.querySelectorAll('[data-calendar-view]').forEach((button) => {
@@ -136,6 +140,7 @@ async function loadCalendar(pushUrl = false) {
 }
 
 function renderCalendar(range, data) {
+  state.currentRange = range;
   syncControls();
   $('#calendar-title').textContent = range.title;
   $('#calendar-updated').textContent = `Last updated: ${formatDateTime(data.lastUpdated)}`;
@@ -187,12 +192,18 @@ function renderDayCell(dateKey, periodMonth) {
   const cell = document.createElement('section');
   cell.className = 'calendar-day';
   if (dateKey === todayString()) cell.classList.add('today');
+  if (dateKey === state.selectedDate) cell.classList.add('selected-day');
   if (state.view === 'month' && dayDate.getMonth() !== periodMonth) cell.classList.add('outside-period');
   cell.setAttribute('aria-label', formatLongDate(dateKey));
 
   const header = document.createElement('div');
   header.className = 'date-header';
-  header.append(el('span', String(dayDate.getDate()), 'date-number'));
+  const dateButton = el('button', String(dayDate.getDate()), 'date-button');
+  dateButton.type = 'button';
+  dateButton.setAttribute('aria-label', `Select ${formatLongDate(dateKey)}`);
+  if (dateKey === state.selectedDate) dateButton.setAttribute('aria-current', 'date');
+  dateButton.addEventListener('click', () => selectDate(dateKey));
+  header.append(dateButton);
   if (dateKey === todayString()) header.append(el('span', 'Today', 'today-label'));
 
   const entryList = document.createElement('div');
@@ -222,12 +233,20 @@ function renderCalendarEntry(entry) {
 
 function renderAgenda(range) {
   const list = $('#agenda-list');
+  const mobile = isMobileCalendar();
   const entries = allEntries()
-    .filter((entry) => entry.calendarDate >= range.start && entry.calendarDate <= range.end)
+    .filter((entry) => {
+      if (mobile) return entry.calendarDate === state.selectedDate;
+      return entry.calendarDate >= range.start && entry.calendarDate <= range.end;
+    })
     .sort((a, b) => a.calendarDate.localeCompare(b.calendarDate) || entryTitle(a).localeCompare(entryTitle(b)));
 
+  $('#agenda-title').textContent = mobile
+    ? `Agenda for ${formatLongDate(state.selectedDate)}`
+    : 'Agenda';
+
   if (!entries.length) {
-    renderEmpty(list, 'No chores are scheduled for this period.');
+    renderEmpty(list, mobile ? 'No chores are scheduled for this date.' : 'No chores are scheduled for this period.');
     return;
   }
 
@@ -249,12 +268,24 @@ function renderAgenda(range) {
 }
 
 function renderAgendaEntry(entry) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `agenda-entry ${entryClass(entry)}`;
-  button.append(el('strong', entryTitle(entry)), el('span', entrySubtitle(entry)));
-  button.addEventListener('click', () => openEntryDetail(entry));
-  return button;
+  const card = document.createElement('article');
+  card.className = `agenda-entry ${entryClass(entry)}`;
+
+  const main = document.createElement('button');
+  main.type = 'button';
+  main.className = 'agenda-entry-main';
+  main.append(el('strong', entryTitle(entry)), el('span', entrySubtitle(entry)));
+  main.addEventListener('click', () => openEntryDetail(entry));
+  card.append(main);
+
+  if (entry.type !== 'completed') {
+    const complete = el('button', 'Mark Complete', 'primary-button agenda-complete-button');
+    complete.type = 'button';
+    complete.addEventListener('click', () => openCompleteDialog(entry.id));
+    card.append(complete);
+  }
+
+  return card;
 }
 
 function openEntryDetail(entry) {
@@ -546,7 +577,24 @@ function movePeriod(direction) {
   state.anchorDate = state.view === 'month'
     ? addMonths(state.anchorDate, direction)
     : addDays(state.anchorDate, direction * 7);
+  state.selectedDate = state.anchorDate;
   loadCalendar(true);
+}
+
+function selectDate(dateKey) {
+  state.anchorDate = dateKey;
+  state.selectedDate = dateKey;
+  if (!state.currentRange || dateKey < state.currentRange.start || dateKey > state.currentRange.end) {
+    loadCalendar(true);
+    return;
+  }
+  updateUrl(true);
+  renderGrid(state.currentRange);
+  renderAgenda(state.currentRange);
+  if (isMobileCalendar()) {
+    $('#agenda-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('#agenda-title').focus?.();
+  }
 }
 
 function getVisibleRange() {
@@ -593,13 +641,16 @@ function hydrateStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const date = params.get('date');
   const view = params.get('view');
-  if (isValidDate(date)) state.anchorDate = date;
+  if (isValidDate(date)) {
+    state.anchorDate = date;
+    state.selectedDate = date;
+  }
   if (view === 'month' || view === 'week') state.view = view;
 }
 
 function updateUrl(pushUrl) {
   const params = new URLSearchParams({
-    date: state.anchorDate,
+    date: state.selectedDate,
     view: state.view
   });
   const nextUrl = `/calendar?${params}`;
@@ -673,6 +724,10 @@ function formatDateTime(value) {
   return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function isMobileCalendar() {
+  return window.matchMedia('(max-width: 720px)').matches;
+}
+
 async function api(url, options = {}) {
   const response = await fetch(url, {
     headers: {
@@ -689,6 +744,14 @@ async function api(url, options = {}) {
 
 function openDialog(id) {
   const dialog = $(`#${id}`);
+  lastFocusedElement = document.activeElement;
+  document.body.classList.add('modal-open');
+  dialog.addEventListener('close', () => {
+    document.body.classList.remove('modal-open');
+    if (lastFocusedElement && document.contains(lastFocusedElement)) {
+      lastFocusedElement.focus();
+    }
+  }, { once: true });
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');
 }
@@ -696,7 +759,10 @@ function openDialog(id) {
 function closeDialog(id) {
   const dialog = $(`#${id}`);
   if (typeof dialog.close === 'function') dialog.close();
-  else dialog.removeAttribute('open');
+  else {
+    dialog.removeAttribute('open');
+    document.body.classList.remove('modal-open');
+  }
 }
 
 function renderEmpty(container, message) {

@@ -16,10 +16,13 @@ const state = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+let lastFocusedElement = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   applySavedTheme();
+  hydrateInitialView();
   bindEvents();
+  switchView(state.currentView, false);
   loadInitialData();
 });
 
@@ -32,18 +35,32 @@ function bindEvents() {
     loadDashboard();
   });
   $('#sort-select').addEventListener('change', (event) => {
-    state.sort = event.target.value;
-    loadDashboard();
+    setSort(event.target.value);
   });
-  document.querySelectorAll('.tab[data-view]').forEach((button) => {
+  document.querySelectorAll('.tab[data-view], .bottom-nav-item[data-view]').forEach((button) => {
     button.addEventListener('click', () => switchView(button.dataset.view));
   });
   document.querySelectorAll('.chip').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.filter = button.dataset.filter;
-      document.querySelectorAll('.chip').forEach((chip) => chip.classList.toggle('active', chip === button));
-      loadDashboard();
-    });
+    button.addEventListener('click', () => setFilter(button.dataset.filter));
+  });
+  $('#filter-sheet-button').addEventListener('click', () => openDialog('filter-dialog'));
+  $('#filter-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    state.filter = $('#mobile-filter-select').value;
+    state.sort = $('#mobile-sort-select').value;
+    $('#sort-select').value = state.sort;
+    closeDialog('filter-dialog');
+    updateFilterControls();
+    loadDashboard();
+  });
+  $('#reset-filters-button').addEventListener('click', () => {
+    state.filter = 'all';
+    state.sort = 'next_due';
+    $('#sort-select').value = state.sort;
+    $('#mobile-filter-select').value = state.filter;
+    $('#mobile-sort-select').value = state.sort;
+    updateFilterControls();
+    loadDashboard();
   });
   document.querySelectorAll('[data-close-dialog]').forEach((button) => {
     button.addEventListener('click', () => closeDialog(button.dataset.closeDialog));
@@ -89,6 +106,7 @@ async function loadDashboard() {
   renderSummary(data.summary);
   renderDashboardChores(data.chores);
   $('#last-updated').textContent = `Last updated: ${formatDateTime(data.lastUpdated)}`;
+  updateFilterControls();
 }
 
 async function loadChores() {
@@ -183,12 +201,27 @@ function renderDashboardChores(chores) {
 
   list.replaceChildren(...chores.map((chore) => {
     const card = document.createElement('article');
-    card.className = 'chore-card';
-    card.append(
-      cardTop(chore),
-      detailsGrid(chore),
+    card.className = `chore-card ${slug(chore.status)}`;
+    const extra = document.createElement('details');
+    extra.className = 'card-extra';
+    extra.open = window.matchMedia('(min-width: 680px)').matches;
+    extra.append(
+      el('summary', 'Details'),
+      detailsGrid([
+        ['Last completed', formatDate(chore.lastDone)],
+        ['Frequency', chore.frequencyLabel]
+      ]),
       noteBlock(chore.notes, 'notes'),
       noteBlock(chore.upcomingRotation, 'rotation-note')
+    );
+
+    card.append(
+      cardTop(chore),
+      detailsGrid([
+        ['Assigned', chore.assignedName],
+        ['Due', formatDate(chore.nextDue)]
+      ], 'chore-primary-meta'),
+      extra
     );
 
     const actions = document.createElement('div');
@@ -208,21 +241,14 @@ function renderDashboardChores(chores) {
 function cardTop(chore) {
   const top = document.createElement('div');
   top.className = 'card-top';
-  top.append(el('h3', chore.name));
   const badge = el('span', chore.status, `badge ${slug(chore.status)}`);
-  top.append(badge);
+  top.append(badge, el('h3', chore.name));
   return top;
 }
 
-function detailsGrid(chore) {
+function detailsGrid(details, className = 'details-grid') {
   const grid = document.createElement('div');
-  grid.className = 'details-grid';
-  const details = [
-    ['Assigned', chore.assignedName],
-    ['Last completed', formatDate(chore.lastDone)],
-    ['Next due', formatDate(chore.nextDue)],
-    ['Frequency', chore.frequencyLabel]
-  ];
+  grid.className = className;
   grid.replaceChildren(...details.map(([label, value]) => {
     const item = document.createElement('div');
     item.className = 'detail';
@@ -250,7 +276,12 @@ function renderManageList() {
   list.replaceChildren(...state.chores.map((chore) => {
     const card = document.createElement('article');
     card.className = 'manage-card';
-    card.append(cardTop({ ...chore, status: chore.archived ? 'Archived' : chore.status }), detailsGrid(chore));
+    card.append(cardTop({ ...chore, status: chore.archived ? 'Archived' : chore.status }), detailsGrid([
+      ['Assigned', chore.assignedName],
+      ['Last completed', formatDate(chore.lastDone)],
+      ['Next due', formatDate(chore.nextDue)],
+      ['Frequency', chore.frequencyLabel]
+    ]));
 
     const actions = document.createElement('div');
     actions.className = 'card-actions';
@@ -397,11 +428,11 @@ function renderRotationEditor() {
     label.append(checkbox, el('span', person.name));
     const actions = document.createElement('div');
     actions.className = 'mini-actions';
-    const up = el('button', '↑');
+    const up = el('button', 'Up');
     up.type = 'button';
     up.disabled = index === 0 || !state.rotationDraft.includes(person.id);
     up.addEventListener('click', () => moveRotation(person.id, -1));
-    const down = el('button', '↓');
+    const down = el('button', 'Down');
     down.type = 'button';
     down.disabled = index >= state.rotationDraft.length - 1 || !state.rotationDraft.includes(person.id);
     down.addEventListener('click', () => moveRotation(person.id, 1));
@@ -508,10 +539,48 @@ async function mutate(url, options, message) {
   }
 }
 
-function switchView(view) {
+function hydrateInitialView() {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view');
+  if (['dashboard', 'history', 'manage'].includes(view)) state.currentView = view;
+}
+
+function setFilter(filter) {
+  state.filter = filter;
+  $('#mobile-filter-select').value = state.filter;
+  updateFilterControls();
+  loadDashboard();
+}
+
+function setSort(sort) {
+  state.sort = sort;
+  $('#mobile-sort-select').value = state.sort;
+  loadDashboard();
+}
+
+function updateFilterControls() {
+  document.querySelectorAll('.chip').forEach((chip) => chip.classList.toggle('active', chip.dataset.filter === state.filter));
+  $('#mobile-filter-select').value = state.filter;
+  $('#mobile-sort-select').value = state.sort;
+  $('#sort-select').value = state.sort;
+  const active = state.filter !== 'all' || state.sort !== 'next_due';
+  $('#filter-sheet-button').textContent = active ? 'Filters active' : 'Filters';
+}
+
+function switchView(view, updateUrl = true) {
+  if (!['dashboard', 'history', 'manage'].includes(view)) return;
   state.currentView = view;
-  document.querySelectorAll('.tab').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
+  document.querySelectorAll('.tab[data-view], .bottom-nav-item[data-view]').forEach((button) => {
+    const active = button.dataset.view === view;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   document.querySelectorAll('.view').forEach((section) => section.classList.toggle('active', section.id === `${view}-view`));
+  if (updateUrl) {
+    const nextUrl = view === 'dashboard' ? '/' : `/?view=${view}`;
+    window.history.replaceState(null, '', nextUrl);
+  }
 }
 
 async function api(url, options = {}) {
@@ -532,6 +601,14 @@ async function api(url, options = {}) {
 
 function openDialog(id) {
   const dialog = $(`#${id}`);
+  lastFocusedElement = document.activeElement;
+  document.body.classList.add('modal-open');
+  dialog.addEventListener('close', () => {
+    document.body.classList.remove('modal-open');
+    if (lastFocusedElement && document.contains(lastFocusedElement)) {
+      lastFocusedElement.focus();
+    }
+  }, { once: true });
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');
 }
@@ -539,7 +616,10 @@ function openDialog(id) {
 function closeDialog(id) {
   const dialog = $(`#${id}`);
   if (typeof dialog.close === 'function') dialog.close();
-  else dialog.removeAttribute('open');
+  else {
+    dialog.removeAttribute('open');
+    document.body.classList.remove('modal-open');
+  }
 }
 
 function renderEmpty(container, message) {

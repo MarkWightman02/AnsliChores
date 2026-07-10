@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#176b67">
+    <meta name="apple-mobile-web-app-title" content="Ansli Chores">
     <title>Ansli Chores</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
@@ -18,13 +20,13 @@
           <span>I am</span>
           <select id="current-roommate"></select>
         </label>
-        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">Aa</button>
       </div>
     </header>
 
     <main id="main" class="app-shell">
       <nav class="tabs" aria-label="Main sections">
-        <button class="tab active" type="button" data-view="dashboard">Dashboard</button>
+        <button class="tab active" type="button" data-view="dashboard" aria-current="page">Dashboard</button>
         <a class="tab" href="/calendar">Calendar</a>
         <button class="tab" type="button" data-view="manage">Manage</button>
         <button class="tab" type="button" data-view="history">History</button>
@@ -46,10 +48,11 @@
             <button class="chip active" type="button" data-filter="all">All chores</button>
             <button class="chip" type="button" data-filter="my">My chores</button>
             <button class="chip" type="button" data-filter="overdue">Overdue</button>
-            <button class="chip" type="button" data-filter="today">Due today</button>
-            <button class="chip" type="button" data-filter="upcoming">Upcoming</button>
-            <button class="chip" type="button" data-filter="recent">Completed recently</button>
+            <button class="chip secondary-filter" type="button" data-filter="today">Due today</button>
+            <button class="chip secondary-filter" type="button" data-filter="upcoming">Upcoming</button>
+            <button class="chip secondary-filter" type="button" data-filter="recent">Completed recently</button>
           </div>
+          <button id="filter-sheet-button" class="secondary-button filter-sheet-button" type="button">Filters</button>
           <label class="sort-picker">
             <span>Sort</span>
             <select id="sort-select">
@@ -114,11 +117,63 @@
       </section>
     </main>
 
+    <nav class="bottom-nav" aria-label="Mobile sections">
+      <button class="bottom-nav-item active" type="button" data-view="dashboard" aria-current="page">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Home</span>
+      </button>
+      <a class="bottom-nav-item" href="/calendar">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 2v3M17 2v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+        <span>Calendar</span>
+      </a>
+      <button class="bottom-nav-item" type="button" data-view="history">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 8v5l3 2M5 3v5h5M5.5 8A8 8 0 1 1 4 12"/></svg>
+        <span>Activity</span>
+      </button>
+      <button class="bottom-nav-item" type="button" data-view="manage">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M9 17h6"/></svg>
+        <span>Manage</span>
+      </button>
+    </nav>
+
+    <dialog id="filter-dialog" class="modal sheet-modal">
+      <form method="dialog" id="filter-form">
+        <header class="modal-header">
+          <h3>Filters</h3>
+          <button class="icon-button" type="button" data-close-dialog="filter-dialog" aria-label="Close">x</button>
+        </header>
+        <label>
+          <span>Show</span>
+          <select id="mobile-filter-select">
+            <option value="all">All chores</option>
+            <option value="my">My chores</option>
+            <option value="overdue">Overdue</option>
+            <option value="today">Due today</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="recent">Completed recently</option>
+          </select>
+        </label>
+        <label>
+          <span>Sort</span>
+          <select id="mobile-sort-select">
+            <option value="next_due">Next due date</option>
+            <option value="assignee">Assignee</option>
+            <option value="name">Chore name</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <footer class="modal-actions">
+          <button class="secondary-button" id="reset-filters-button" type="button">Reset Filters</button>
+          <button class="primary-button" type="submit">Apply</button>
+        </footer>
+      </form>
+    </dialog>
+
     <dialog id="complete-dialog" class="modal">
       <form method="dialog" id="complete-form">
         <header class="modal-header">
           <h3>Mark complete</h3>
-          <button class="icon-button" type="button" data-close-dialog="complete-dialog" aria-label="Close">×</button>
+          <button class="icon-button" type="button" data-close-dialog="complete-dialog" aria-label="Close">x</button>
         </header>
         <p id="complete-chore-name" class="modal-subtitle"></p>
         <label>
@@ -144,7 +199,7 @@
       <form method="dialog" id="chore-form">
         <header class="modal-header">
           <h3 id="chore-dialog-title">Add chore</h3>
-          <button class="icon-button" type="button" data-close-dialog="chore-dialog" aria-label="Close">×</button>
+          <button class="icon-button" type="button" data-close-dialog="chore-dialog" aria-label="Close">x</button>
         </header>
         <div class="form-grid">
           <label class="span-2">
@@ -196,7 +251,7 @@
       <form method="dialog" id="history-form">
         <header class="modal-header">
           <h3>Correct completion</h3>
-          <button class="icon-button" type="button" data-close-dialog="history-dialog" aria-label="Close">×</button>
+          <button class="icon-button" type="button" data-close-dialog="history-dialog" aria-label="Close">x</button>
         </header>
         <p id="history-record-title" class="modal-subtitle"></p>
         <label>

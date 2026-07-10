@@ -1,5 +1,5 @@
 .calendar-shell {
-  padding-bottom: 3rem;
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
 }
 
 .theme-text-button {
@@ -28,6 +28,11 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
+}
+
+.calendar-title-row .muted,
+.compact-heading .muted {
+  overflow-wrap: anywhere;
 }
 
 .calendar-title-row h2 {
@@ -156,8 +161,21 @@
   min-height: 28px;
 }
 
-.date-number {
+.date-button {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
   font-weight: 900;
+  padding: 0;
+}
+
+.calendar-day.selected-day .date-button {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
 }
 
 .today-label {
@@ -187,12 +205,25 @@
   text-align: left;
 }
 
+.agenda-entry {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.agenda-entry-main {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
 .calendar-entry strong,
 .agenda-entry strong {
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .calendar-entry span,
@@ -202,8 +233,7 @@
   font-size: 0.76rem;
   font-weight: 700;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .calendar-entry.overdue,
@@ -236,6 +266,10 @@
 .agenda-list {
   display: grid;
   gap: 0.8rem;
+}
+
+.agenda-complete-button {
+  width: 100%;
 }
 
 .agenda-day {
@@ -293,22 +327,29 @@
   }
 
   .calendar-grid {
-    grid-template-columns: repeat(7, minmax(38px, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     border-top: 1px solid var(--border);
   }
 
   .calendar-day {
-    min-height: 58px;
-    padding: 0.3rem;
+    min-height: 62px;
+    padding: 0.22rem;
   }
 
   .calendar-grid.week-view .calendar-day {
-    min-height: 92px;
+    min-height: 72px;
   }
 
   .date-header {
     justify-content: center;
     margin-bottom: 0.2rem;
+    min-height: 34px;
+  }
+
+  .date-button {
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 0.9rem;
   }
 
   .today-label {
@@ -320,6 +361,7 @@
     border-left-width: 0;
     border-radius: 999px;
     padding: 0;
+    pointer-events: none;
   }
 
   .calendar-entry strong,
@@ -331,6 +373,14 @@
     min-height: 18px;
     font-size: 0.68rem;
     padding: 0;
+  }
+
+  .agenda-section {
+    scroll-margin-top: 0.75rem;
+  }
+
+  .agenda-entry {
+    padding: 0.75rem;
   }
 }
 

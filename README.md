@@ -7,6 +7,7 @@ A self-hosted roommate chore tracker for Sam, Corey, Anthony, and Mark. It uses 
 - Shared server-side SQLite storage
 - Mobile-first dashboard with status summaries, filters, and sorting
 - Separate `/calendar` page with month and week views, filters, overdue summary, and mobile agenda
+- Phone-friendly bottom navigation, compact chore cards, mobile filter sheet, and sheet-style dialogs
 - Chore completion workflow with notes, actual completion dates, and rotation advancement
 - Add, edit, archive, restore, and permanently delete archived chores
 - Custom chore rotations with ordering
