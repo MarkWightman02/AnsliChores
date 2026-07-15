@@ -1,121 +1,193 @@
 # Ansli Chores
 
-A self-hosted roommate chore tracker for Sam, Corey, Anthony, and Mark. It uses Node.js, Express, SQLite, and vanilla HTML/CSS/JavaScript.
+Ansli Chores is a self-hosted roommate chore tracker for Sam, Corey, Anthony, and Mark. The application is implemented with Node.js, Express, SQLite through `better-sqlite3`, and static HTML/CSS/JavaScript.
 
-## Features
+This documentation describes what is implemented in this repository. It does not assume support for features that are not present in the codebase.
 
-- Shared server-side SQLite storage
-- Mobile-first dashboard with status summaries, filters, and sorting
-- Separate `/calendar` page with month and week views, filters, overdue summary, and mobile agenda
-- Phone-friendly bottom navigation, compact chore cards, mobile filter sheet, and sheet-style dialogs
-- Chore completion workflow with notes, actual completion dates, and rotation advancement
-- Add, edit, archive, restore, and permanently delete archived chores
-- Custom chore rotations with ordering
-- Completion history with filters, correction, and deletion
-- Discord morning reminders for due and overdue chores, with optional evening follow-up
-- JSON export, SQLite backup download, and `/api/health`
-- Light/dark theme support and accessible modal dialogs
+## Documentation
+
+- [API reference](docs/API.md)
+- [Database and data model](docs/DATABASE.md)
+- [Runtime, notifications, and operations](docs/OPERATIONS.md)
+
+## Implemented Features
+
+- Dashboard page at `/` with status summaries, roommate selection, chore filters, sorting, completion dialogs, and mobile bottom navigation.
+- Calendar page at `/calendar` with month/week views, overdue summary, agenda view, roommate/status filters, optional completed-history display, and chore detail dialogs.
+- Manage view on `/` for creating, editing, archiving, restoring, and permanently deleting archived chores.
+- History view on `/` for filtering, correcting, and deleting completion records.
+- Server-side SQLite persistence, schema creation, seed data, and transactional writes for chore creation, updates, completion, history correction, history deletion, and notification reservation.
+- Chore rotation support using per-chore ordered rotation members.
+- Completion history that stores completed-by, previous/new assignee, previous/new last-done date, and previous/new due date.
+- JSON export and SQLite backup download endpoints.
+- Discord reminder support through environment variables, including morning reminders, optional evening reminders, manual test notifications, duplicate prevention, catch-up on restart, sanitized errors, and controlled `allowed_mentions`.
+- Light/dark theme preference saved in browser `localStorage`.
+
+## Not Implemented
+
+These are intentionally documented as absences because they are not present in the repository:
+
+- No user accounts, login, authorization, or CSRF protection.
+- No roommate creation/edit/delete HTTP API or UI. Roommates are seeded into the database and can be listed by the API.
+- No automatic `.env` file loader. Environment variables must be set by the shell, service manager, hosting environment, or another process wrapper.
+- No schema migration framework beyond `CREATE TABLE IF NOT EXISTS`, indexes, and triggers in `src/db.js`.
+- No frontend build step or bundler.
 
 ## Requirements
 
-- Node.js 20 or newer
-- npm
+The repository does not declare an `engines` field in `package.json`.
 
-## Local Startup
+The implementation uses:
+
+- `node --test`
+- global `fetch`
+- CommonJS modules
+- `better-sqlite3`
+
+Use a Node.js version that provides the built-in test runner and global `fetch`. Node.js 18 or newer satisfies those code-level requirements.
+
+## Install
 
 ```bash
 npm install
+```
+
+Dependencies are:
+
+- Runtime: `better-sqlite3`, `express`
+- Development: none declared
+
+## Start
+
+```bash
 npm start
 ```
 
-The app defaults to [http://localhost:8080](http://localhost:8080). Set `PORT` to use another port:
+`npm start` runs:
+
+```bash
+node src/server.js
+```
+
+When `src/server.js` is run directly, the server listens on `Number(process.env.PORT) || 80`.
+
+Examples:
 
 ```bash
 PORT=3000 npm start
 ```
 
-On PowerShell:
+PowerShell:
 
 ```powershell
 $env:PORT = "3000"
 npm start
 ```
 
+On systems where binding to port `80` requires elevated privileges, set `PORT` to a non-privileged port such as `3000` or `8080`.
+
 ## Database
 
-The default SQLite database is created at `data/chores.db`. The initial chores are seeded only when the database is empty. To use a different database path:
+By default, the database file is:
+
+```text
+data/chores.db
+```
+
+Override it with:
 
 ```bash
 DATABASE_FILE=/path/to/chores.db npm start
 ```
 
-The app enables SQLite foreign keys, WAL mode, and transactional writes for completion changes.
+`openDatabase` creates the parent directory, enables SQLite foreign keys, sets WAL journal mode, sets a `busy_timeout` of 5000 milliseconds, creates tables/indexes/triggers if needed, and seeds default data only when both `roommates` and `chores` are empty.
 
-## Discord Reminders
+See [Database and data model](docs/DATABASE.md) for the full schema and persistence behavior.
 
-Discord reminders are configured entirely through server environment variables. Never commit real webhook URLs or Discord user IDs. Use [.env.example](C:/Users/Mark/Documents/AnsliChores/.env.example) only as a placeholder template.
+## Seed Data
 
-Required for delivery:
+The seed data in `src/seedData.js` creates:
 
-```ini
-DISCORD_WEBHOOK_URL=
-DISCORD_USER_COREY=
-DISCORD_USER_ANTHONY=
-DISCORD_USER_SAM=
-DISCORD_USER_MARK=
-APP_PUBLIC_URL=http://localhost:8080
-TZ=America/New_York
-```
+- Four roommates: Sam, Corey, Anthony, Mark
+- Seventeen chores
+- Several configured rotations, including:
+  - `Vacuum Living Room + Den`: Sam -> Corey -> Anthony -> Mark
+  - `Mow Grass`: Sam -> Anthony
+  - Bathroom chores with Sam -> Corey -> Anthony
 
-Optional scheduling values:
+Seed data is not reapplied after the database contains any roommate or chore rows.
 
-```ini
-DISCORD_NOTIFICATIONS_ENABLED=true
-DISCORD_MORNING_TIME=08:30
-DISCORD_EVENING_ENABLED=false
-DISCORD_EVENING_TIME=19:00
-DISCORD_CATCHUP_WINDOW_MINUTES=180
-```
+## Chore Completion Behavior
 
-The morning reminder sends one digest at 8:30 AM in the configured timezone. It includes active chores due today or overdue, grouped by assignee, and links back to `APP_PUBLIC_URL`. If no chores are due or overdue, no Discord message is sent. Evening reminders are disabled by default and, when enabled, send only chores still outstanding at 7:00 PM.
+Completing a chore:
 
-Duplicate prevention is persisted in SQLite in `notification_deliveries`, keyed by reminder type and local date. On restart, the app sends a catch-up reminder only if the scheduled time already passed, no successful/skipped delivery exists for that local date, and the restart is within `DISCORD_CATCHUP_WINDOW_MINUTES`.
+- Requires an active `completedBy` roommate and a valid `YYYY-MM-DD` completion date.
+- Updates `last_done` to the submitted completion date.
+- Calculates the next due date from the submitted completion date, not from the old due date.
+- Advances rotating chores from the chore's current `assigned_to` value, not from the roommate who clicked completion.
+- Leaves non-rotating chores and `All` chores assigned to the same assignee.
+- Inserts a completion-history record containing previous and new assignment/date state.
+- Runs inside a SQLite transaction.
 
-The Manage screen shows safe Discord notification status and includes a `Send Test Notification` button. The test dialog accepts only Mark, Sam, Corey, Anthony, or All Roommates; Discord IDs are resolved only on the server and are never returned to the browser.
+If a rotating chore has at least two configured rotation members and the current assignee is not in that rotation, completion is rejected with HTTP `409` and no history record is inserted.
 
-After changing systemd environment values:
+Duplicate completion submissions with the same latest persisted state and same payload return the existing history record with `duplicate: true` instead of advancing the rotation again.
 
-```bash
-systemctl daemon-reload
-systemctl restart ansli-chores
-journalctl -u ansli-chores -f
-```
-
-## Tests
+## Test
 
 ```bash
 npm test
 ```
 
-The tests cover due-date calculations, monthly end-of-month behavior, first-run seeding, rotation advancement, deleting the most recent completion record, calendar route/API behavior, mobile shell checks, and Discord notification formatting/delivery behavior.
+The test suite uses Node's built-in test runner and temporary SQLite databases. Current tests cover:
 
-## API Overview
+- Date validation and due-date calculations.
+- First-run seed data.
+- Rotating chore advancement for two-, three-, and four-person rotations.
+- Completing a chore for another roommate.
+- Invalid rotation rejection without partial writes.
+- Non-rotating and `All` assignment completion behavior.
+- Inactive rotation member skipping.
+- History deletion rollback.
+- Calendar route/API behavior.
+- Duplicate completion submissions.
+- Mobile static shell checks.
+- Discord notification formatting, scheduling, duplicate prevention, retry behavior, sanitization, manual tests, and safe status output.
 
-- `GET /api/health`
-- `GET /api/roommates`
-- `GET /api/dashboard`
-- `GET /api/calendar`
-- `GET /api/notifications/status`
-- `POST /api/notifications/test`
-- `GET /api/chores`
-- `POST /api/chores`
-- `PUT /api/chores/:id`
-- `POST /api/chores/:id/archive`
-- `POST /api/chores/:id/restore`
-- `DELETE /api/chores/:id`
-- `POST /api/chores/:id/complete`
-- `GET /api/history`
-- `PUT /api/history/:id`
-- `DELETE /api/history/:id`
-- `GET /api/export`
-- `GET /api/backup`
+## Project Layout
+
+```text
+.
+|-- public/
+|   |-- index.html       # dashboard/manage/history shell
+|   |-- app.js           # dashboard/manage/history browser logic
+|   |-- styles.css       # shared styling
+|   |-- calendar.html    # calendar shell
+|   |-- calendar.js      # calendar browser logic
+|   `-- calendar.css     # calendar-specific styling
+|-- src/
+|   |-- server.js        # Express app, API routes, validation, static hosting
+|   |-- db.js            # SQLite setup, queries, transactions, data mapping
+|   |-- dateUtils.js     # date-only validation and frequency calculations
+|   |-- notifications.js # Discord configuration, scheduler, payloads, sender
+|   `-- seedData.js      # initial roommates and chores
+|-- test/                # node:test regression tests
+|-- docs/                # detailed documentation
+|-- package.json
+|-- package-lock.json
+`-- .env.example
+```
+
+## Browser State
+
+The frontend stores only preferences in `localStorage`:
+
+- `ansli:selectedRoommate`
+- `ansli:theme`
+- `ansli:calendarView`
+- `ansli:calendarRoommate`
+- `ansli:calendarStatus`
+- `ansli:calendarIncludeAll`
+- `ansli:calendarShowCompleted`
+
+Application data is stored server-side in SQLite.
