@@ -201,9 +201,17 @@ function createApp(db = openDatabase(), options = {}) {
     const parsed = validateCompletionPayload(db, req.body);
     if (!parsed.ok) return sendError(res, 400, parsed.message);
 
-    const result = completeChore(db, id, parsed.data);
-    if (!result) return sendError(res, 404, 'Active chore not found.');
-    res.status(201).json(result);
+    try {
+      const result = completeChore(db, id, parsed.data);
+      if (!result) return sendError(res, 404, 'Active chore not found.');
+      res.status(201).json(result);
+    } catch (error) {
+      if (error.code === 'INVALID_ROTATION') {
+        console.warn(`Rejected chore completion for invalid rotation state. choreId=${error.choreId || id}`);
+        return sendError(res, 409, 'This chore cannot be completed because its rotation no longer contains the current assignee.');
+      }
+      throw error;
+    }
   });
 
   app.get('/api/history', (req, res) => {

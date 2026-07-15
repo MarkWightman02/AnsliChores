@@ -362,15 +362,25 @@ function completeChore(db, id, data) {
     const row = db.prepare('SELECT * FROM chores WHERE id = ? AND archived = 0').get(id);
     if (!row) return null;
 
+    const duplicate = getDuplicateCompletion(db, row, data);
+    if (duplicate) {
+      return {
+        chore: getChore(db, id),
+        history: getHistoryRecord(db, duplicate.id),
+        duplicate: true
+      };
+    }
+
     const rotation = db.prepare(`
-      SELECT roommate_id AS id
-      FROM chore_rotation
-      WHERE chore_id = ?
-      ORDER BY rotation_order
-    `).all(id).map((item) => item.id);
+      SELECT cr.roommate_id AS id, r.active
+      FROM chore_rotation cr
+      JOIN roommates r ON r.id = cr.roommate_id
+      WHERE cr.chore_id = ?
+      ORDER BY cr.rotation_order
+    `).all(id);
 
     const previousAssignee = row.assigned_to;
-    const newAssignee = advanceAssignee(previousAssignee, Boolean(row.rotation_enabled), rotation);
+    const newAssignee = advanceAssignee(previousAssignee, Boolean(row.rotation_enabled), rotation, row.id);
     const newDueDate = addFrequency(data.completedDate, row.frequency_count, row.frequency_unit);
 
     db.prepare(`
@@ -409,11 +419,62 @@ function completeChore(db, id, data) {
   return tx();
 }
 
-function advanceAssignee(currentAssignee, rotationEnabled, rotationIds) {
-  if (!rotationEnabled || !currentAssignee || rotationIds.length === 0) return currentAssignee;
-  const currentIndex = rotationIds.indexOf(currentAssignee);
-  if (currentIndex === -1) return rotationIds[0];
-  return rotationIds[(currentIndex + 1) % rotationIds.length];
+function getDuplicateCompletion(db, chore, data) {
+  if (chore.last_done !== data.completedDate) return null;
+
+  const latest = db.prepare(`
+    SELECT id, completed_by, completed_date, completion_note, new_last_done, new_due_date
+    FROM completion_history
+    WHERE chore_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(chore.id);
+
+  if (!latest) return null;
+  const samePayload = latest.completed_by === data.completedBy
+    && latest.completed_date === data.completedDate
+    && (latest.completion_note || '') === (data.completionNote || '');
+  const samePersistedState = latest.new_last_done === chore.last_done
+    && latest.new_due_date === chore.next_due;
+
+  return samePayload && samePersistedState ? latest : null;
+}
+
+function advanceAssignee(currentAssignee, rotationEnabled, rotation, choreId = null) {
+  const members = rotation.map((member) => (
+    typeof member === 'number' ? { id: member, active: 1 } : member
+  ));
+  if (!rotationEnabled || !currentAssignee || members.length === 0) return currentAssignee;
+
+  const currentIndex = members.findIndex((member) => member.id === currentAssignee);
+  if (currentIndex === -1) {
+    if (members.length >= 2) {
+      throw new InvalidRotationError(
+        choreId,
+        'The current assignee is not present in this chore rotation.'
+      );
+    }
+    return currentAssignee;
+  }
+
+  if (members.length === 1) return currentAssignee;
+
+  // Preserve the configured order, but skip disabled roommates at completion time.
+  for (let offset = 1; offset <= members.length; offset += 1) {
+    const next = members[(currentIndex + offset) % members.length];
+    if (next.active) return next.id;
+  }
+
+  return currentAssignee;
+}
+
+class InvalidRotationError extends Error {
+  constructor(choreId, message) {
+    super(message);
+    this.name = 'InvalidRotationError';
+    this.code = 'INVALID_ROTATION';
+    this.choreId = choreId;
+  }
 }
 
 function listHistory(db, filters = {}) {

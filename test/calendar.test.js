@@ -6,7 +6,7 @@ const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createApp } = require('../src/server');
-const { listChores, openDatabase, setArchived } = require('../src/db');
+const { getChore, listChores, listHistory, openDatabase, setArchived } = require('../src/db');
 
 function tempDatabase() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ansli-calendar-test-'));
@@ -123,5 +123,54 @@ test('calendar completion flow updates due date and advances rotation', async ()
     assert.equal(updated.nextDue, '2026-07-26');
     assert.equal(updated.calendarDate, '2026-07-26');
     assert.equal(updated.assignedName, 'Corey');
+  });
+});
+
+test('completion API rejects invalid rotation state without history writes', async () => {
+  await withServer(async ({ baseUrl, db }) => {
+    const chore = listChores(db).find((item) => item.name === 'Clean Bathroom Floors');
+    const mark = db.prepare('SELECT id FROM roommates WHERE name = ?').get('Mark');
+    db.prepare('UPDATE chores SET assigned_to = ? WHERE id = ?').run(mark.id, chore.id);
+
+    const response = await fetch(`${baseUrl}/api/chores/${chore.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        completedBy: mark.id,
+        completedDate: '2026-07-12',
+        completionNote: ''
+      })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.match(body.error, /rotation/);
+    assert.equal(getChore(db, chore.id).assignedName, 'Mark');
+    assert.equal(listHistory(db, { choreId: chore.id }).length, 0);
+  });
+});
+
+test('duplicate completion submissions only create one history record and one rotation advancement', async () => {
+  await withServer(async ({ baseUrl, db }) => {
+    const chore = listChores(db).find((item) => item.name === 'Vacuum Living Room + Den');
+    const sam = chore.rotation.find((person) => person.name === 'Sam');
+    const payload = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        completedBy: sam.id,
+        completedDate: '2026-07-12',
+        completionNote: 'Double-clicked.'
+      })
+    };
+
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/api/chores/${chore.id}/complete`, payload),
+      fetch(`${baseUrl}/api/chores/${chore.id}/complete`, payload)
+    ]);
+
+    assert.deepEqual(responses.map((response) => response.status), [201, 201]);
+    assert.equal(getChore(db, chore.id).assignedName, 'Corey');
+    assert.equal(listHistory(db, { choreId: chore.id }).length, 1);
   });
 });
